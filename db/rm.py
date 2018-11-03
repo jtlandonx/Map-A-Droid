@@ -310,10 +310,12 @@ class RmWrapper:
             return False
 
         if start is not None:
-            start -= self.timezone * 60 * 60
+            tsstart = start
+            start = datetime.datetime.utcfromtimestamp(start).strftime('%Y-%m-%d %H:%M:%S')
 
         if end is not None:
-            end -= self.timezone * 60 * 60
+            tsend = end
+            end = datetime.datetime.utcfromtimestamp(end).strftime('%Y-%m-%d %H:%M:%S')
 
         wh_send = False
         wh_start = 0
@@ -331,16 +333,17 @@ class RmWrapper:
         whereStr = 'WHERE gym_id = \'%s\' ' % str(gym)
         if MonWithNoEgg:
             # submit mon without egginfo -> we have an endtime
-            start = end - (int(args.raid_time) * 60)
+            #start = end - (int(args.raid_time) * 60)
+            start = datetime.datetime.utcfromtimestamp(int(tsend) - (int(args.raid_time) * 60)).strftime('%Y-%m-%d %H:%M:%S')
             log.info("Updating mon without egg")
-            setStr = 'SET level = %s, spawn = FROM_UNIXTIME(%s), start = FROM_UNIXTIME(%s), end = FROM_UNIXTIME(%s), ' \
+            setStr = 'SET level = %s, spawn = FROM_UNIXTIME(%s), start = %s, end = %s, ' \
                      'pokemon_id = %s, last_scanned = FROM_UNIXTIME(%s), cp = %s, move_1 = %s, move_2 = %s '
             data = (lvl, captureTime, start, end, pkm, int(time.time()), '999', '1', '1')
 
             # send out a webhook - this case should only occur once...
             wh_send = True
-            wh_start = start
-            wh_end = end
+            wh_start = tsend - (int(args.raid_time) * 60)
+            wh_end = tsend
         elif end is None or start is None:
             # no end or start time given, just update anything there is
             log.info("Updating without end- or starttime - we should've seen the egg before")
@@ -350,7 +353,7 @@ class RmWrapper:
             foundEndTime, EndTime = self.getRaidEndtime(gym, raidNo)
             if foundEndTime:
                 wh_send = True
-                wh_start = int(EndTime) - 2700
+                wh_start = int(EndTime) - (int(args.raid_time) * 60)
                 wh_end = EndTime
                 eggHatched = True
             else:
@@ -358,14 +361,14 @@ class RmWrapper:
         else:
             log.info("Updating everything")
             # we have start and end, mon is either with egg or we're submitting an egg
-            setStr = 'SET level = %s, spawn = FROM_UNIXTIME(%s), start = FROM_UNIXTIME(%s), end = FROM_UNIXTIME(%s), ' \
+            setStr = 'SET level = %s, spawn = FROM_UNIXTIME(%s), start = %s, end = %s, ' \
                      'pokemon_id = %s, ' \
                      'last_scanned = FROM_UNIXTIME(%s), cp = %s, move_1 = %s, move_2 = %s '
             data = (lvl, captureTime, start, end, pkm, int(time.time()), '999', '1', '1')
 
             wh_send = True
-            wh_start = start
-            wh_end = end
+            wh_start = tsstart
+            wh_end = tsend
 
         query = updateStr + setStr + whereStr
         log.debug(query % data)
@@ -379,10 +382,10 @@ class RmWrapper:
             if MonWithNoEgg:
                 # submit mon without egg info -> we have an endtime
                 log.info("Inserting mon without egg")
-                start = end - (int(args.raid_time) * 60)
+                start = datetime.datetime.utcfromtimestamp(int(tsend) - (int(args.raid_time) * 60)).strftime('%Y-%m-%d %H:%M:%S')
                 query = (
                     'INSERT INTO raid (gym_id, level, spawn, start, end, pokemon_id, last_scanned, cp, move_1, move_2) '
-                    'VALUES (%s, %s, FROM_UNIXTIME(%s), FROM_UNIXTIME(%s), FROM_UNIXTIME(%s), %s, FROM_UNIXTIME(%s), 999, 1, 1)')
+                    'VALUES (%s, %s, FROM_UNIXTIME(%s), %s, %s, %s, FROM_UNIXTIME(%s), 999, 1, 1)')
                 data = (gym, lvl, captureTime, start, end, pkm, int(time.time()))
             elif end is None or start is None:
                 log.info("Inserting without end or start")
@@ -394,7 +397,7 @@ class RmWrapper:
                 log.info("Inserting everything")
                 query = (
                     'INSERT INTO raid (gym_id, level, spawn, start, end, pokemon_id, last_scanned, cp, move_1, move_2) '
-                    'VALUES (%s, %s, FROM_UNIXTIME(%s), FROM_UNIXTIME(%s), FROM_UNIXTIME(%s), %s, FROM_UNIXTIME(%s), 999, 1, 1)')
+                    'VALUES (%s, %s, FROM_UNIXTIME(%s), %s, %s, %s, FROM_UNIXTIME(%s), 999, 1, 1)')
                 data = (gym, lvl, captureTime, start, end, pkm, int(time.time()))
 
             cursorIns = connection.cursor()
@@ -405,10 +408,10 @@ class RmWrapper:
 
             wh_send = True
             if MonWithNoEgg:
-                wh_start = int(end) - 2700
+                wh_start = tsend - (int(args.raid_time) * 60)
             else:
-                wh_start = start
-            wh_end = end
+                wh_start = tsstart
+            wh_end = tsend
             if pkm is None:
                 pkm = 0
 
@@ -873,3 +876,4 @@ class RmWrapper:
         cursor.close()
         connection.close()
         return True
+    
